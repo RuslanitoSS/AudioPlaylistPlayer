@@ -1,14 +1,13 @@
 namespace AudioPlaylistPlayer.Core.Models;
 
-public sealed class TrackEventArgs : EventArgs
+public class TrackEventArgs : EventArgs
 {
-    public TrackEventArgs(Track track, int index)
+    public TrackEventArgs(Guid trackId, int index)
     {
-        Track = track;
+        TrackId = trackId;
         Index = index;
     }
 
-    public Track Track { get; }
-
+    public Guid TrackId { get; }
     public int Index { get; }
 }

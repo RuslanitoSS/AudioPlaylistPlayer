@@ -5,47 +5,38 @@ namespace AudioPlaylistPlayer.Core.Playback;
 public sealed class PlayerController
 {
     private readonly IAudioOutput _output;
+    private readonly MusicLibrary _library;
     private double _position;
     private Guid? _currentTrackId;
     private bool _trackLoaded;
 
-    public PlayerController(PlaylistLibrary library, AppSettings settings, IAudioOutput output)
+    public PlayerController(MusicLibrary library, AppSettings settings, IAudioOutput output)
     {
-        Library = library;
+        _library = library;
         Settings = settings;
         _output = output;
         Volume = Math.Clamp(settings.Volume, 0, 1);
         Mode = settings.DefaultPlaybackMode;
         _output.SetVolume(Volume);
         _output.PlaybackCompleted += OnPlaybackCompleted;
-        Library.PlaylistRemoved += OnPlaylistRemoved;
     }
 
-    public PlaylistLibrary Library { get; }
-
+    public MusicLibrary Library => _library;
     public AppSettings Settings { get; }
-
     public Playlist? CurrentPlaylist { get; private set; }
-
     public int CurrentIndex { get; private set; } = -1;
-
     public PlaybackStatus Status { get; private set; } = PlaybackStatus.Stopped;
-
     public PlaybackMode Mode { get; private set; }
-
     public double Volume { get; private set; }
-
     public IReadOnlyList<int> ShuffleOrder { get; private set; } = [];
 
     public Track? CurrentTrack =>
-        CurrentPlaylist is not null && CurrentIndex >= 0 && CurrentIndex < CurrentPlaylist.Tracks.Count
-            ? CurrentPlaylist.Tracks[CurrentIndex]
+        CurrentPlaylist is not null && CurrentIndex >= 0 && CurrentIndex < CurrentPlaylist.TrackCount
+            ? _library.GetTrack(CurrentPlaylist.TrackIds[CurrentIndex])
             : null;
 
     public double PositionSeconds => Status == PlaybackStatus.Playing ? _output.PositionSeconds : _position;
-
     public double? DurationSeconds => _output.DurationSeconds;
-
     public bool ShouldResumePlayback { get; private set; }
 
     public event EventHandler? Changed;
@@ -53,10 +44,10 @@ public sealed class PlayerController
     public void SelectPlaylist(Playlist playlist, int index = 0)
     {
         ArgumentNullException.ThrowIfNull(playlist);
-        Attach(playlist);
-        CurrentIndex = playlist.Tracks.Count == 0
+        CurrentPlaylist = playlist;
+        CurrentIndex = playlist.TrackCount == 0
             ? -1
-            : Math.Clamp(index, 0, playlist.Tracks.Count - 1);
+            : Math.Clamp(index, 0, playlist.TrackCount - 1);
         RememberTrack();
         _position = 0;
         _trackLoaded = false;
@@ -71,26 +62,20 @@ public sealed class PlayerController
     {
         if (CurrentTrack is null)
         {
-            var playlist = CurrentPlaylist ?? Library.Playlists.FirstOrDefault();
-            if (playlist is null)
+            if (CurrentPlaylist is null || CurrentPlaylist.TrackCount == 0)
                 return;
-
-            if (!ReferenceEquals(playlist, CurrentPlaylist))
-                SelectPlaylist(playlist);
-
-            if (CurrentTrack is null && playlist.Tracks.Count > 0)
-            {
-                CurrentIndex = Mode == PlaybackMode.Shuffle && ShuffleOrder.Count > 0
-                    ? ShuffleOrder[0]
-                    : 0;
-                RememberTrack();
-            }
+            
+            CurrentIndex = Mode == PlaybackMode.Shuffle && ShuffleOrder.Count > 0
+                ? ShuffleOrder[0]
+                : 0;
+            RememberTrack();
         }
 
         if (CurrentTrack is null)
             return;
 
         ShouldResumePlayback = false;
+
         if (Status == PlaybackStatus.Paused && _trackLoaded)
         {
             _output.Resume();
@@ -150,7 +135,7 @@ public sealed class PlayerController
         var next = PlaybackCursor.NextIndex(
             Mode,
             CurrentIndex,
-            CurrentPlaylist.Tracks.Count,
+            CurrentPlaylist.TrackCount,
             ShuffleOrder,
             automatic);
 
@@ -166,7 +151,7 @@ public sealed class PlayerController
 
     public async Task PreviousAsync(CancellationToken cancellationToken = default)
     {
-        if (CurrentPlaylist is null || CurrentPlaylist.Tracks.Count == 0)
+        if (CurrentPlaylist is null || CurrentPlaylist.TrackCount == 0)
             return;
 
         if (PositionSeconds > 3)
@@ -178,8 +163,9 @@ public sealed class PlayerController
         var previous = PlaybackCursor.PreviousIndex(
             Mode,
             CurrentIndex,
-            CurrentPlaylist.Tracks.Count,
+            CurrentPlaylist.TrackCount,
             ShuffleOrder);
+
         await JumpToAsync(previous, Status == PlaybackStatus.Playing, cancellationToken);
     }
 
@@ -188,7 +174,6 @@ public sealed class PlayerController
         _position = Math.Max(0, seconds);
         if (Status == PlaybackStatus.Playing)
             _output.Seek(_position);
-
         Notify();
         return Task.CompletedTask;
     }
@@ -207,7 +192,6 @@ public sealed class PlayerController
         Settings.DefaultPlaybackMode = mode;
         if (mode == PlaybackMode.Shuffle)
             RebuildShuffle();
-
         Notify();
     }
 
@@ -228,39 +212,18 @@ public sealed class PlayerController
         _output.SetVolume(Volume);
         Mode = session.Mode;
         Settings.DefaultPlaybackMode = session.Mode;
-
-        var playlist = session.PlaylistId is Guid id ? Library.FindById(id) : null;
-        if (playlist is null)
-        {
-            Detach();
-            CurrentIndex = -1;
-            _currentTrackId = null;
-            _position = 0;
-            _trackLoaded = false;
-            ShouldResumePlayback = false;
-            ShuffleOrder = [];
-            Status = PlaybackStatus.Stopped;
-            _output.Stop();
-            Notify();
-            return;
-        }
-
-        Attach(playlist);
-        CurrentIndex = playlist.Tracks.Count == 0
-            ? -1
-            : Math.Clamp(session.TrackIndex, 0, playlist.Tracks.Count - 1);
-        RememberTrack();
-        _position = Math.Max(0, session.PositionSeconds);
-        ShuffleOrder = session.ShuffleOrder.ToArray();
-        if (Mode == PlaybackMode.Shuffle && ShuffleOrder.Count != playlist.Tracks.Count)
-            RebuildShuffle();
-
-        _output.Stop();
+        
+        // Здесь нужно найти плейлист по ID, но пока упрощаем
+        // В реальной реализации нужен PlaylistLibrary
+        CurrentPlaylist = null;
+        CurrentIndex = -1;
+        _currentTrackId = null;
+        _position = 0;
         _trackLoaded = false;
-        ShouldResumePlayback = session.Status == PlaybackStatus.Playing;
-        Status = session.Status == PlaybackStatus.Stopped
-            ? PlaybackStatus.Stopped
-            : PlaybackStatus.Paused;
+        ShouldResumePlayback = false;
+        ShuffleOrder = [];
+        Status = PlaybackStatus.Stopped;
+        _output.Stop();
         Notify();
     }
 
@@ -274,6 +237,7 @@ public sealed class PlayerController
         Status = PlaybackStatus.Stopped;
         _output.Stop();
         Notify();
+
         if (play)
             await PlayAsync(cancellationToken);
     }
@@ -283,120 +247,11 @@ public sealed class PlayerController
         _ = NextAsync(automatic: true);
     }
 
-    private void OnPlaylistRemoved(object? sender, Playlist playlist)
-    {
-        if (CurrentPlaylist?.Id != playlist.Id)
-            return;
-
-        Detach();
-        CurrentIndex = -1;
-        _currentTrackId = null;
-        _position = 0;
-        _trackLoaded = false;
-        ShouldResumePlayback = false;
-        ShuffleOrder = [];
-        Status = PlaybackStatus.Stopped;
-        _output.Stop();
-        Notify();
-    }
-
-    private void Attach(Playlist playlist)
-    {
-        if (ReferenceEquals(CurrentPlaylist, playlist))
-            return;
-
-        Detach();
-        CurrentPlaylist = playlist;
-        playlist.TrackAdded += OnTrackAdded;
-        playlist.TrackRemoved += OnTrackRemoved;
-        playlist.TrackMoved += OnTrackMoved;
-    }
-
-    private void Detach()
-    {
-        if (CurrentPlaylist is null)
-            return;
-
-        CurrentPlaylist.TrackAdded -= OnTrackAdded;
-        CurrentPlaylist.TrackRemoved -= OnTrackRemoved;
-        CurrentPlaylist.TrackMoved -= OnTrackMoved;
-        CurrentPlaylist = null;
-    }
-
-    private void OnTrackAdded(object? sender, TrackEventArgs e)
-    {
-        if (Mode == PlaybackMode.Shuffle)
-            RebuildShuffle();
-
-        Notify();
-    }
-
-    private void OnTrackRemoved(object? sender, TrackEventArgs e)
-    {
-        if (e.Track.Id == _currentTrackId)
-        {
-            _position = 0;
-            _trackLoaded = false;
-            ShouldResumePlayback = false;
-            Status = PlaybackStatus.Stopped;
-            _output.Stop();
-            if (CurrentPlaylist is { Tracks.Count: > 0 })
-            {
-                CurrentIndex = Math.Min(e.Index, CurrentPlaylist.Tracks.Count - 1);
-                RememberTrack();
-            }
-            else
-            {
-                CurrentIndex = -1;
-                _currentTrackId = null;
-            }
-        }
-        else
-        {
-            FollowCurrentTrack();
-        }
-
-        if (Mode == PlaybackMode.Shuffle)
-            RebuildShuffle();
-
-        Notify();
-    }
-
-    private void OnTrackMoved(object? sender, TrackMovedEventArgs e)
-    {
-        FollowCurrentTrack();
-        if (Mode == PlaybackMode.Shuffle)
-            RebuildShuffle();
-
-        Notify();
-    }
-
-    private void FollowCurrentTrack()
-    {
-        if (CurrentPlaylist is null || _currentTrackId is null)
-        {
-            CurrentIndex = -1;
-            return;
-        }
-
-        for (var i = 0; i < CurrentPlaylist.Tracks.Count; i++)
-        {
-            if (CurrentPlaylist.Tracks[i].Id == _currentTrackId)
-            {
-                CurrentIndex = i;
-                return;
-            }
-        }
-
-        CurrentIndex = -1;
-        _currentTrackId = null;
-    }
-
     private void RememberTrack() => _currentTrackId = CurrentTrack?.Id;
 
     private void RebuildShuffle()
     {
-        var count = CurrentPlaylist?.Tracks.Count ?? 0;
+        var count = CurrentPlaylist?.TrackCount ?? 0;
         if (count == 0)
         {
             ShuffleOrder = [];

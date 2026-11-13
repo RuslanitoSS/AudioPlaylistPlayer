@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AudioPlaylistPlayer.Mobile.QueuePage"
+             Title="Очередь">
+
+    <VerticalStackLayout Padding="20">
+        <Label Text="Сейчас играет" FontSize="24" FontAttributes="Bold" Margin="0,0,0,20"/>
+        
+        <!-- Заглушка -->
+        <Label Text="Здесь будет трек и очередь" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="CenterAndExpand"/>
+    </VerticalStackLayout>
+
+</ContentPage>

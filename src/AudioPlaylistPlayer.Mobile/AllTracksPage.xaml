@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:AudioPlaylistPlayer.Mobile.Controls"
+             x:Class="AudioPlaylistPlayer.Mobile.AllTracksPage"
+             Title="Все треки">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Кнопка добавления треков -->
+        <Button Text="➕ Добавить файлы" 
+                Command="{Binding AddTracksCommand}" 
+                Margin="20" 
+                BackgroundColor="#2196F3" 
+                TextColor="White" 
+                CornerRadius="10" />
+
+        <!-- Список треков -->
+        <CollectionView Grid.Row="1" ItemsSource="{Binding AllTracks}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <!-- Используем наш универсальный компонент -->
+                    <controls:TrackListItem BindingContext="{Binding .}" />
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

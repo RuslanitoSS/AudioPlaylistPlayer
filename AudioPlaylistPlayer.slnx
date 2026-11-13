@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AudioPlaylistPlayer.Console/AudioPlaylistPlayer.Console.csproj" />
+    <Project Path="src/AudioPlaylistPlayer.Core/AudioPlaylistPlayer.Core.csproj" />
+    <Project Path="src/AudioPlaylistPlayer.Mobile/AudioPlaylistPlayer.Mobile.csproj" />
+  </Folder>
+</Solution>

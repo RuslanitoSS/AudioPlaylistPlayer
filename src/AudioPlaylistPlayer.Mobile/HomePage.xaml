@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AudioPlaylistPlayer.Mobile.HomePage"
+             Title="Музыка">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="24">
+            
+            <!-- Верх: Заголовок и поиск -->
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Text="Музыка" FontSize="32" FontAttributes="Bold" VerticalOptions="Center" />
+                <Label Text="🔍" FontSize="24" VerticalOptions="Center" Grid.Column="1" />
+            </Grid>
+
+            <!-- Центр: Большая кнопка "Слушать" -->
+            <Button Text="▶ Слушать всё" 
+                    FontSize="20" 
+                    HeightRequest="60" 
+                    CornerRadius="30" 
+                    BackgroundColor="#512BD4" 
+                    TextColor="White"
+                    Command="{Binding PlayAllCommand}" />
+
+            <!-- Низ: Горизонтальные квадратные карточки -->
+            <Label Text="Разделы" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+            
+            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                <HorizontalStackLayout Spacing="16">
+                    
+                    <!-- Карточка 1: Все треки -->
+                    <Frame WidthRequest="120" HeightRequest="120" CornerRadius="12" Padding="15" HasShadow="True">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding NavigateToAllTracksCommand}" />
+                        </Frame.GestureRecognizers>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
+                            <Label Text="🎵" FontSize="32" HorizontalOptions="Center" />
+                            <Label Text="Все треки" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Frame>
+
+                    <!-- Карточка 2: История -->
+                    <Frame WidthRequest="120" HeightRequest="120" CornerRadius="12" Padding="15" HasShadow="True">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding NavigateToHistoryCommand}" />
+                        </Frame.GestureRecognizers>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
+                            <Label Text="🕒" FontSize="32" HorizontalOptions="Center" />
+                            <Label Text="История" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Frame>
+
+                    <!-- Карточка 3: Все плейлисты -->
+                    <Frame WidthRequest="120" HeightRequest="120" CornerRadius="12" Padding="15" HasShadow="True">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding NavigateToPlaylistsCommand}" />
+                        </Frame.GestureRecognizers>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
+                            <Label Text="📁" FontSize="32" HorizontalOptions="Center" />
+                            <Label Text="Плейлисты" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Frame>
+
+                </HorizontalStackLayout>
+            </ScrollView>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

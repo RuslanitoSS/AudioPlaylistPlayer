@@ -13,15 +13,18 @@ public sealed class PlayerApplication
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingFilePath);
         WorkingFilePath = workingFilePath;
-        State = File.Exists(workingFilePath) ? _store.Load(workingFilePath) : new AppState();
-        Player = new PlayerController(State.Library, State.Settings, output ?? new SilentAudioOutput());
+        
+        State = File.Exists(workingFilePath) 
+            ? _store.Load(workingFilePath) 
+            : new AppState();
+
+        // ВАЖНО: передаем MusicLibrary, а не PlaylistLibrary
+        Player = new PlayerController(State.MusicLibrary, State.Settings, output ?? new SilentAudioOutput());
         Player.ApplySession(State.Session);
     }
 
     public string WorkingFilePath { get; }
-
     public AppState State { get; }
-
     public PlayerController Player { get; }
 
     public async Task<int> ExecuteAsync(
@@ -74,38 +77,47 @@ public sealed class PlayerApplication
                 stdout.WriteLine(Describe());
                 break;
             case CommandKind.PlaylistCreate:
-                State.Library.Create(command.PlaylistName!);
+                State.PlaylistLibrary.Create(command.PlaylistName!);
                 stdout.WriteLine($"Плейлист «{command.PlaylistName}» создан.");
                 break;
             case CommandKind.PlaylistDelete:
-                var deleted = State.Library.RequireByName(command.PlaylistName!);
-                State.Library.Remove(deleted.Id);
+                var deleted = State.PlaylistLibrary.RequireByName(command.PlaylistName!);
+                State.PlaylistLibrary.Remove(deleted.Id);
                 stdout.WriteLine($"Плейлист «{deleted.Name}» удалён.");
                 break;
             case CommandKind.PlaylistRename:
-                var renamed = State.Library.RequireByName(command.PlaylistName!);
-                var clash = State.Library.FindByName(command.NewName!);
+                var renamed = State.PlaylistLibrary.RequireByName(command.PlaylistName!);
+                var clash = State.PlaylistLibrary.FindByName(command.NewName!);
                 if (clash is not null && clash.Id != renamed.Id)
                     throw new InvalidOperationException($"Плейлист «{clash.Name}» уже есть.");
                 renamed.Rename(command.NewName!);
                 stdout.WriteLine($"Плейлист переименован в «{renamed.Name}».");
                 break;
             case CommandKind.PlaylistAdd:
-                var target = State.Library.RequireByName(command.PlaylistName!);
+                var target = State.PlaylistLibrary.RequireByName(command.PlaylistName!);
                 var title = Path.GetFileNameWithoutExtension(command.Path!);
-                if (string.IsNullOrWhiteSpace(title))
-                    title = command.Path!;
-                target.Add(new Track(title, new FileTrackSource(command.Path!)));
+                if (string.IsNullOrWhiteSpace(title)) title = command.Path!;
+                
+                var newTrack = new Track(title, new FileTrackSource(command.Path!));
+                
+                // ШАГ 1: Добавляем трек в глобальную библиотеку
+                State.MusicLibrary.AddTrack(newTrack);
+                // ШАГ 2: Добавляем ТОЛЬКО ID в плейлист
+                target.AddTrackId(newTrack.Id);
+                
                 stdout.WriteLine($"Трек «{title}» добавлен в «{target.Name}».");
                 break;
             case CommandKind.PlaylistRemove:
-                var playlist = State.Library.RequireByName(command.PlaylistName!);
+                var playlist = State.PlaylistLibrary.RequireByName(command.PlaylistName!);
                 var index = command.TrackNumber!.Value - 1;
-                if (index >= playlist.Tracks.Count)
+                if (index >= playlist.TrackCount)
                     throw new ArgumentOutOfRangeException(nameof(command), "В плейлисте нет трека с таким номером.");
-                var removed = playlist.Tracks[index];
+                
+                var removedId = playlist.TrackIds[index];
                 playlist.RemoveAt(index);
-                stdout.WriteLine($"Трек «{removed.Title}» удалён из «{playlist.Name}».");
+                
+                var removedTrack = State.MusicLibrary.GetTrack(removedId);
+                stdout.WriteLine($"Трек «{removedTrack?.Title ?? "Unknown"}» удалён из «{playlist.Name}».");
                 break;
             case CommandKind.Mode:
                 Player.SetMode(command.Mode!.Value);
@@ -136,12 +148,8 @@ public sealed class PlayerApplication
 
     private void Replace(AppState loaded)
     {
-        while (State.Library.Playlists.Count > 0)
-            State.Library.Remove(State.Library.Playlists[0].Id);
-
-        foreach (var playlist in loaded.Library.Playlists.ToList())
-            State.Library.AddExisting(playlist);
-
+        State.MusicLibrary = loaded.MusicLibrary;
+        State.PlaylistLibrary = loaded.PlaylistLibrary;
         State.Settings.CopyFrom(loaded.Settings);
         Player.ApplySession(loaded.Session);
     }
@@ -155,22 +163,23 @@ public sealed class PlayerApplication
     public string Describe()
     {
         var lines = new List<string>();
-        if (State.Library.Playlists.Count == 0)
+        if (State.PlaylistLibrary.Playlists.Count == 0)
         {
             lines.Add("Плейлистов нет.");
         }
         else
         {
             lines.Add("Плейлисты:");
-            foreach (var playlist in State.Library.Playlists)
+            foreach (var playlist in State.PlaylistLibrary.Playlists)
             {
                 var marker = Player.CurrentPlaylist?.Id == playlist.Id ? "*" : "-";
-                lines.Add($"{marker} {playlist.Name} ({playlist.Tracks.Count})");
-                for (var i = 0; i < playlist.Tracks.Count; i++)
-                    lines.Add($"    {i + 1}. {playlist.Tracks[i].Title}");
+                // Получаем реальные треки через библиотеку для отображения
+                var tracks = playlist.GetTracks(State.MusicLibrary);
+                lines.Add($"{marker} {playlist.Name} ({tracks.Count})");
+                for (var i = 0; i < tracks.Count; i++)
+                    lines.Add($"  {i + 1}. {tracks[i].Title}");
             }
         }
-
         lines.Add(DescribePosition());
         lines.Add($"Тема: {AppThemeNames.Display(State.Settings.Theme)}.");
         return string.Join(Environment.NewLine, lines);

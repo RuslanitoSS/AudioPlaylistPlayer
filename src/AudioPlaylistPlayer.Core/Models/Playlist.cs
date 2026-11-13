@@ -2,22 +2,34 @@ namespace AudioPlaylistPlayer.Core.Models;
 
 public sealed class Playlist
 {
-    private readonly List<Track> _tracks = [];
+    private readonly List<Guid> _trackIds = [];
 
-    public Playlist(string name, Guid? id = null, IEnumerable<Track>? tracks = null)
+    public Playlist(string name, Guid? id = null, IEnumerable<Guid>? trackIds = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         Id = id ?? Guid.NewGuid();
         Name = name.Trim();
-        if (tracks is not null)
-            _tracks.AddRange(tracks);
+        if (trackIds is not null)
+            _trackIds.AddRange(trackIds);
     }
 
     public Guid Id { get; }
 
     public string Name { get; private set; }
 
-    public IReadOnlyList<Track> Tracks => _tracks;
+    public string Description { get; set; } = string.Empty;
+    
+    public IReadOnlyList<string> Tags { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Список ID треков в плейлисте (порядок важен).
+    /// </summary>
+    public IReadOnlyList<Guid> TrackIds => _trackIds;
+
+    /// <summary>
+    /// Количество треков в плейлисте.
+    /// </summary>
+    public int TrackCount => _trackIds.Count;
 
     public event EventHandler<TrackEventArgs>? TrackAdded;
 
@@ -38,35 +50,52 @@ public sealed class Playlist
         Renamed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Add(Track track)
+    /// <summary>
+    /// Добавляет ID трека в плейлист.
+    /// </summary>
+    public void AddTrackId(Guid trackId)
     {
-        ArgumentNullException.ThrowIfNull(track);
-        _tracks.Add(track);
-        TrackAdded?.Invoke(this, new TrackEventArgs(track, _tracks.Count - 1));
+        _trackIds.Add(trackId);
+        TrackAdded?.Invoke(this, new TrackEventArgs(trackId, _trackIds.Count - 1));
     }
 
+    /// <summary>
+    /// Удаляет трек по индексу.
+    /// </summary>
     public void RemoveAt(int index)
     {
-        if (index < 0 || index >= _tracks.Count)
+        if (index < 0 || index >= _trackIds.Count)
             throw new ArgumentOutOfRangeException(nameof(index), "В плейлисте нет трека с таким номером.");
 
-        var track = _tracks[index];
-        _tracks.RemoveAt(index);
-        TrackRemoved?.Invoke(this, new TrackEventArgs(track, index));
+        var trackId = _trackIds[index];
+        _trackIds.RemoveAt(index);
+        TrackRemoved?.Invoke(this, new TrackEventArgs(trackId, index));
     }
 
+    /// <summary>
+    /// Перемещает трек с одной позиции на другую.
+    /// </summary>
     public void Move(int oldIndex, int newIndex)
     {
-        if (oldIndex < 0 || oldIndex >= _tracks.Count)
+        if (oldIndex < 0 || oldIndex >= _trackIds.Count)
             throw new ArgumentOutOfRangeException(nameof(oldIndex));
-        if (newIndex < 0 || newIndex >= _tracks.Count)
+        if (newIndex < 0 || newIndex >= _trackIds.Count)
             throw new ArgumentOutOfRangeException(nameof(newIndex));
         if (oldIndex == newIndex)
             return;
 
-        var track = _tracks[oldIndex];
-        _tracks.RemoveAt(oldIndex);
-        _tracks.Insert(newIndex, track);
-        TrackMoved?.Invoke(this, new TrackMovedEventArgs(track, oldIndex, newIndex));
+        var trackId = _trackIds[oldIndex];
+        _trackIds.RemoveAt(oldIndex);
+        _trackIds.Insert(newIndex, trackId);
+        TrackMoved?.Invoke(this, new TrackMovedEventArgs(trackId, oldIndex, newIndex));
+    }
+
+    /// <summary>
+    /// Получает реальные объекты треков через MusicLibrary.
+    /// </summary>
+    public IReadOnlyList<Track> GetTracks(MusicLibrary library)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        return library.GetTracksByIds(_trackIds);
     }
 }

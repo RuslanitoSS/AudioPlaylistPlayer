@@ -1,13 +1,16 @@
 using AudioPlaylistPlayer.Core.Models;
-using AudioPlaylistPlayer.Core.Playback;
+using AudioPlaylistPlayer.Core.Playback; // <-- ДОБАВЛЕНО ЭТО
+
 
 namespace AudioPlaylistPlayer.Core.Persistence;
 
 public sealed class AppState
 {
-    public PlaylistLibrary Library { get; } = new();
+    public MusicLibrary MusicLibrary { get; set; } = new();
+    public PlaylistLibrary PlaylistLibrary { get; set; } = new();
+    public AppSettings Settings { get; set; } = new();
+    public SessionSnapshot Session { get; set; } = new();
 
-    public AppSettings Settings { get; } = new();
-
-    public SessionSnapshot Session { get; set; } = SessionSnapshot.Empty;
+    // Для обратной совместимости со старым кодом, который ожидает свойство Library
+    public PlaylistLibrary Library => PlaylistLibrary; 
 }
