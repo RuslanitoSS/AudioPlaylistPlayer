@@ -39,14 +39,14 @@
                         </VerticalStackLayout>
                     </Frame>
 
-                    <!-- Карточка 2: История -->
+                    <!-- Карточка 2: Добавить файлы -->
                     <Frame WidthRequest="120" HeightRequest="120" CornerRadius="12" Padding="15" HasShadow="True">
                         <Frame.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding NavigateToHistoryCommand}" />
+                            <TapGestureRecognizer Command="{Binding AddTracksCommand}" />
                         </Frame.GestureRecognizers>
                         <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
-                            <Label Text="🕒" FontSize="32" HorizontalOptions="Center" />
-                            <Label Text="История" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" />
+                            <Label Text="➕" FontSize="32" HorizontalOptions="Center" />
+                            <Label Text="Добавить" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" />
                         </VerticalStackLayout>
                     </Frame>
 

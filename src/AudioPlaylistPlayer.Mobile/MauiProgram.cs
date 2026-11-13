@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Plugin.Maui.Audio;
 using AudioPlaylistPlayer.Mobile.Services;
 using AudioPlaylistPlayer.Core.Persistence;
@@ -10,6 +10,8 @@ namespace AudioPlaylistPlayer.Mobile;
 
 public static class MauiProgram
 {
+    public static string StateFilePath => Path.Combine(FileSystem.AppDataDirectory, "player-state.json");
+
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
@@ -21,68 +23,41 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
-        // 1. Сначала регистрируем MusicLibrary, чтобы он был доступен везде
-        builder.Services.AddSingleton<MusicLibrary>();
+        // 1. Библиотеки (хранилища данных)
+        var musicLibrary = new MusicLibrary();
+        var playlistLibrary = new PlaylistLibrary();
+        var settings = new AppSettings();
 
-        // 2. Аудио сервисы
+        // 2. Загружаем сохранённое состояние (треки, плейлисты, настройки, сессия)
+        var stateStore = new AppStateStore();
+        var persisted = stateStore.LoadInto(StateFilePath, musicLibrary, playlistLibrary, settings);
+
+        // 3. Аудио сервисы
         builder.Services.AddSingleton<IAudioManager>(AudioManager.Current);
         builder.Services.AddSingleton<MauiAudioOutput>();
 
-        // 3. Регистрируем PlayerController
+        builder.Services.AddSingleton(musicLibrary);
+        builder.Services.AddSingleton(playlistLibrary);
+        builder.Services.AddSingleton(settings);
+        builder.Services.AddSingleton(stateStore);
+
+        // 4. Регистрируем PlayerController
         builder.Services.AddSingleton(sp =>
         {
             var library = sp.GetRequiredService<MusicLibrary>();
-            var workingFile = Path.Combine(FileSystem.AppDataDirectory, "player-state.json");
-
-            // Загружаем состояние (предполагаем, что state.Library - это PlaylistLibrary)
-            var state = File.Exists(workingFile)
-                ? new JsonStateStore().Load(workingFile)
-                : new AppState();
-
+            var playlists = sp.GetRequiredService<PlaylistLibrary>();
+            var appSettings = sp.GetRequiredService<AppSettings>();
             var audioOutput = sp.GetRequiredService<MauiAudioOutput>();
 
-            // ВАЖНО: PlayerController теперь принимает MusicLibrary первым аргументом
-            var player = new PlayerController(library, state.Settings, audioOutput);
-            player.ApplySession(state.Session);
-            // ==========================================
-            // АВТОМАТИЧЕСКОЕ СКАНИРОВАНИЕ ПАПКИ
-            // ==========================================
-            if (state.MusicLibrary.Count == 0)
-            {
-                var musicFolder = @"C:\Music\MyCollection"; // Укажите вашу папку
-
-                if (Directory.Exists(musicFolder))
-                {
-                    var mp3Files = Directory.GetFiles(musicFolder, "*.mp3");
-                    var playlist = state.PlaylistLibrary.Create("Моя коллекция");
-
-                    foreach (var filePath in mp3Files)
-                    {
-                        var fileName = Path.GetFileNameWithoutExtension(filePath);
-                        var track = new Track(fileName, new FileTrackSource(filePath));
-
-                        // Добавляем в глобальную библиотеку
-                        library.AddTrack(track);
-                        // Добавляем ID в плейлист
-                        playlist.AddTrackId(track.Id);
-                    }
-
-                    Console.WriteLine($"Найдено и добавлено {mp3Files.Length} треков");
-
-                    if (playlist.TrackCount > 0)
-                    {
-                        player.SelectPlaylist(playlist, 0);
-                    }
-                }
-            }
-            // ==========================================
+            var player = new PlayerController(library, appSettings, audioOutput, playlists);
+            player.ApplySession(AppStateMapper.ToSessionSnapshot(persisted.Session));
             return player;
         });
 
-        // 4. Регистрируем ViewModel (DI сам найдет PlayerController и MusicLibrary)
+        // 5. Регистрируем ViewModel
         builder.Services.AddSingleton<AppViewModel>();
 
-        // 5. Страницы
+        // 6. Страницы
         builder.Services.AddTransient<AllTracksPage>();
         builder.Services.AddTransient<PlaylistsPage>();
         builder.Services.AddTransient<HomePage>();
