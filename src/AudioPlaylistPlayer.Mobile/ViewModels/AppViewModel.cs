@@ -11,27 +11,29 @@ public sealed class AppViewModel : INotifyPropertyChanged
 {
     private readonly PlayerController _player;
     private readonly MusicLibrary _library;
+    private readonly PlaylistLibrary _playlistLibrary;
 
-    public AppViewModel(PlayerController player, MusicLibrary library)
+    public AppViewModel(PlayerController player, MusicLibrary library, PlaylistLibrary playlistLibrary)
     {
         _player = player;
         _library = library;
-        
+        _playlistLibrary = playlistLibrary;
+
         Playlists = new ObservableCollection<Playlist>();
         AllTracks = new ObservableCollection<Track>();
-        
+
         RefreshPlaylists();
         RefreshAllTracks();
-        
+
         PlayAllCommand = new Command(async () => await PlayAllAsync());
         NavigateToAllTracksCommand = new Command(() => Shell.Current.GoToAsync("AllTracksPage"));
         NavigateToPlaylistsCommand = new Command(() => Shell.Current.GoToAsync("PlaylistsPage"));
-        
 
         CreatePlaylistCommand = new Command(async () => await CreatePlaylistAsync());
         AddTracksCommand = new Command(async () => await AddTracksAsync());
         PlayTrackCommand = new Command<Track>(track => PlayTrack(track));
-       
+    }
+
     public ObservableCollection<Playlist> Playlists { get; }
     public ObservableCollection<Track> AllTracks { get; }
 
@@ -46,8 +48,10 @@ public sealed class AppViewModel : INotifyPropertyChanged
     private void RefreshPlaylists()
     {
         Playlists.Clear();
-        // Здесь нужно получать плейлисты из PlaylistLibrary
-        // Пока заглушка
+        foreach (var playlist in _playlistLibrary.Playlists)
+        {
+            Playlists.Add(playlist);
+        }
     }
 
     private void RefreshAllTracks()
@@ -83,7 +87,15 @@ public sealed class AppViewModel : INotifyPropertyChanged
         var name = await page.DisplayPromptAsync("Новый плейлист", "Введите название:", "Создать", "Отмена");
         if (!string.IsNullOrWhiteSpace(name))
         {
-            // Нужно добавить в PlaylistLibrary
+            try
+            {
+                _playlistLibrary.Create(name);
+                RefreshPlaylists();
+            }
+            catch (InvalidOperationException ex)
+            {
+                await page.DisplayAlertAsync("Ошибка", ex.Message, "ОК");
+            }
         }
     }
 
