@@ -10,14 +10,14 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-
-        Windows[0].Paused += (_, _) => SaveState();
-        Windows[0].Destroying += (_, _) => SaveState();
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        return new Window(new AppShell());
+        var window = new Window(new AppShell());
+        window.Stopped += (_, _) => SaveState();
+        window.Destroying += (_, _) => SaveState();
+        return window;
     }
 
     private static void SaveState()
