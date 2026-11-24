@@ -125,9 +125,17 @@ public sealed class AppViewModel : INotifyPropertyChanged
             {
                 var cachePath = Path.Combine(FileSystem.CacheDirectory, file.FileName);
                 
-                using var sourceStream = await file.OpenReadAsync();
-                using var fileStream = File.Create(cachePath);
-                await sourceStream.CopyToAsync(fileStream);
+                using (var sourceStream = await file.OpenReadAsync())
+                using (var destStream = File.Create(cachePath))
+                {
+                    await sourceStream.CopyToAsync(destStream);
+                }
+
+                // Резервная копия в AppDataDirectory — кэш может быть очищён ОС,
+                // и тогда воспроизведение падало бы с FileNotFoundException.
+                var backupDir = Path.Combine(FileSystem.AppDataDirectory, "TrackBackup");
+                Directory.CreateDirectory(backupDir);
+                File.Copy(cachePath, Path.Combine(backupDir, file.FileName), overwrite: true);
 
                 var track = new Track(file.FileName, new FileTrackSource(cachePath));
                 _library.AddTrack(track);
@@ -142,7 +150,7 @@ public sealed class AppViewModel : INotifyPropertyChanged
         }
     }
 
-    private void PlayTrack(Track track)
+    private async void PlayTrack(Track track)
     {
         // Создаем временный плейлист из всех треков и запускаем нужный
         var allMusic = new Playlist("Все треки");
@@ -162,7 +170,21 @@ public sealed class AppViewModel : INotifyPropertyChanged
         if (index >= 0)
         {
             _player.SelectPlaylist(allMusic, index);
-            Shell.Current.GoToAsync(nameof(QueuePage));
+
+            // ИСПРАВЛЕНИЕ КРАША: запуск воспроизведения был только при переходе
+            // на страницу очереди — теперь стартуем явно и защищаемся от ошибок.
+            try
+            {
+                await _player.PlayAsync();
+            }
+            catch (Exception ex)
+            {
+                var page = Application.Current?.Windows[0]?.Page;
+                if (page != null)
+                    await page.DisplayAlertAsync("Ошибка воспроизведения", ex.Message, "ОК");
+            }
+
+            await Shell.Current.GoToAsync(nameof(QueuePage));
         }
     }
     public event PropertyChangedEventHandler? PropertyChanged;
