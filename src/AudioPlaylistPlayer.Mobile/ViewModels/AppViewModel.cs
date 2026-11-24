@@ -26,12 +26,17 @@ public sealed class AppViewModel : INotifyPropertyChanged
         RefreshAllTracks();
 
         PlayAllCommand = new Command(async () => await PlayAllAsync());
-        NavigateToAllTracksCommand = new Command(() => Shell.Current.GoToAsync("AllTracksPage"));
-        NavigateToPlaylistsCommand = new Command(() => Shell.Current.GoToAsync("PlaylistsPage"));
+
+        // ИСПРАВЛЕНИЕ: раньше использовался Shell.Current.GoToAsync("AllTracksPage"),
+        // но эти страницы не зарегистрированы как маршруты Shell — переход бросал
+        // InvalidOperationException внутри async-lambda команды, и приложение падало.
+        // Теперь используется прямой Navigation.PushAsync с созданием страниц через DI.
+        NavigateToAllTracksCommand = new Command(async () => await NavigateAsync<AllTracksPage>("Не удалось открыть «Все треки»"));
+        NavigateToPlaylistsCommand = new Command(async () => await NavigateAsync<PlaylistsPage>("Не удалось открыть «Плейлисты»"));
 
         CreatePlaylistCommand = new Command(async () => await CreatePlaylistAsync());
         AddTracksCommand = new Command(async () => await AddTracksAsync());
-        PlayTrackCommand = new Command<Track>(track => PlayTrack(track));
+        PlayTrackCommand = new Command<Track?>(track => { if (track is not null) _ = PlayTrackAsync(track); });
     }
 
     public ObservableCollection<Playlist> Playlists { get; }
@@ -40,10 +45,33 @@ public sealed class AppViewModel : INotifyPropertyChanged
     public ICommand CreatePlaylistCommand { get; }
     public ICommand AddTracksCommand { get; }
     public ICommand PlayTrackCommand { get; }
-    
+
     public ICommand NavigateToAllTracksCommand { get; }
     public ICommand NavigateToPlaylistsCommand { get; }
     public ICommand PlayAllCommand { get; }
+
+    private static INavigation CurrentNavigation =>
+        Application.Current?.Windows?.FirstOrDefault()?.Page?.Navigation
+        ?? throw new InvalidOperationException("Навигация недоступна.");
+
+    private static Task NavigateAsync<TPage>(string errorTitle) where TPage : Page
+    {
+        try
+        {
+            var services = IPlatformApplication.Current?.Services;
+            if (services is null)
+                return Task.CompletedTask;
+
+            // Страницы зарегистрированы в DI как transient — создаём через сервис-провайдер.
+            var page = ActivatorUtilities.CreateInstance<TPage>(services);
+            return CurrentNavigation.PushAsync(page);
+        }
+        catch (Exception ex)
+        {
+            var page = Application.Current?.Windows?.FirstOrDefault()?.Page;
+            return page?.DisplayAlertAsync(errorTitle, ex.Message, "ОК") ?? Task.CompletedTask;
+        }
+    }
 
     private void RefreshPlaylists()
     {
@@ -63,21 +91,41 @@ public sealed class AppViewModel : INotifyPropertyChanged
         }
     }
 
- private async Task PlayAllAsync()
+    private async Task PlayAllAsync()
     {
-        if (_library.AllTracks.Count == 0) return;
+        var page = Application.Current?.Windows?.FirstOrDefault()?.Page;
+        if (page is null) return;
+
+        if (_library.AllTracks.Count == 0)
+        {
+            await page.DisplayAlertAsync("Пусто", "Сначала добавьте аудиофайлы кнопкой «Добавить».", "ОК");
+            return;
+        }
 
         var allMusic = new Playlist("Вся музыка");
-        foreach (var t in _library.AllTracks) 
+        foreach (var t in _library.AllTracks)
         {
             allMusic.AddTrackId(t.Id);
         }
 
         _player.SelectPlaylist(allMusic, 0);
-        await _player.PlayAsync(); // <-- ИСПРАВЛЕНИЕ: Явный запуск воспроизведения после выбора
-        
+
+        // ИСПРАВЛЕНИЕ КРАША: ошибки воспроизведения (отсутствующий/повреждённый файл,
+        // нечитаемый формат) раньше уходили в необработанное исключение и приложение
+        // вылетало. Теперь всё перехватывается и показывается пользователю.
+        try
+        {
+            await _player.PlayAsync();
+        }
+        catch (Exception ex)
+        {
+            _player.Stop();
+            await page.DisplayAlertAsync("Ошибка воспроизведения", ex.Message, "ОК");
+            return;
+        }
+
         // Переход на страницу очереди, где находится плеер
-        await Shell.Current.GoToAsync("QueuePage");
+        await NavigateAsync<QueuePage>("Не удалось открыть очередь воспроизведения");
     }
     private async Task CreatePlaylistAsync()
     {
@@ -150,12 +198,15 @@ public sealed class AppViewModel : INotifyPropertyChanged
         }
     }
 
-    private async void PlayTrack(Track track)
+    private async Task PlayTrackAsync(Track track)
     {
+        var page = Application.Current?.Windows?.FirstOrDefault()?.Page;
+        if (page is null) return;
+
         // Создаем временный плейлист из всех треков и запускаем нужный
         var allMusic = new Playlist("Все треки");
         foreach (var t in _library.AllTracks) allMusic.AddTrackId(t.Id);
-        
+
         // Ищем индекс вручную, так как IReadOnlyList<Guid> не имеет метода IndexOf
         int index = -1;
         for (int i = 0; i < allMusic.TrackIds.Count; i++)
@@ -167,25 +218,28 @@ public sealed class AppViewModel : INotifyPropertyChanged
             }
         }
 
-        if (index >= 0)
+        if (index < 0)
         {
-            _player.SelectPlaylist(allMusic, index);
-
-            // ИСПРАВЛЕНИЕ КРАША: запуск воспроизведения был только при переходе
-            // на страницу очереди — теперь стартуем явно и защищаемся от ошибок.
-            try
-            {
-                await _player.PlayAsync();
-            }
-            catch (Exception ex)
-            {
-                var page = Application.Current?.Windows[0]?.Page;
-                if (page != null)
-                    await page.DisplayAlertAsync("Ошибка воспроизведения", ex.Message, "ОК");
-            }
-
-            await Shell.Current.GoToAsync(nameof(QueuePage));
+            await page.DisplayAlertAsync("Ошибка", "Трек не найден в библиотеке.", "ОК");
+            return;
         }
+
+        _player.SelectPlaylist(allMusic, index);
+
+        // ИСПРАВЛЕНИЕ КРАША: запуск воспроизведения защищён от ошибок —
+        // вместо вылета приложения показываем сообщение.
+        try
+        {
+            await _player.PlayAsync();
+        }
+        catch (Exception ex)
+        {
+            _player.Stop();
+            await page.DisplayAlertAsync("Ошибка воспроизведения", ex.Message, "ОК");
+            return;
+        }
+
+        await NavigateAsync<QueuePage>("Не удалось открыть очередь воспроизведения");
     }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

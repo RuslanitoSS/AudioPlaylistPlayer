@@ -6,9 +6,4 @@ public partial class TrackListItem : ContentView
     {
         InitializeComponent();
     }
-
-    private void OnPointerEntered(object sender, PointerEventArgs e)
-    {
-        // Здесь позже будет логика долгого нажатия для Drag & Drop
-    }
 }

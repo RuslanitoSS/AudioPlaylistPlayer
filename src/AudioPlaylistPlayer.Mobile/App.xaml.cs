@@ -10,7 +10,46 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        // ИСПРАВЛЕНИЕ КРАША: любое необработанное исключение (например, при ошибке
+        // навигации или воспроизведения на Android) раньше завершало процесс.
+        // Теперь показываем сообщение и остаёмся в приложении.
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+#if ANDROID
+        Java.Lang.Thread.DefaultUncaughtExceptionHandler = new LogCrashHandler();
+#endif
     }
+
+    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        var ex = e.ExceptionObject as Exception;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                var page = Windows.FirstOrDefault()?.Page;
+                if (page is not null)
+                    await page.DisplayAlertAsync(
+                        "Непредвиденная ошибка",
+                        ex?.Message ?? "Неизвестная ошибка.",
+                        "ОК");
+            }
+            catch
+            {
+                // не должны ронять приложение из-за обработки краша
+            }
+        });
+    }
+
+#if ANDROID
+    private sealed class LogCrashHandler : Java.Lang.Object, Java.Lang.Thread.IUncaughtExceptionHandler
+    {
+        public void UncaughtException(Java.Lang.Thread thread, Java.Lang.Throwable ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[UNCAUGHT] {ex}");
+        }
+    }
+#endif
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
