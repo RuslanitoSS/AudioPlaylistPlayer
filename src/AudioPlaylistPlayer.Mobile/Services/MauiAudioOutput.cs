@@ -31,11 +31,33 @@ public sealed class MauiAudioOutput : IAudioOutput
         }
 
         var filePath = fileSource.Location;
-        System.Diagnostics.Debug.WriteLine($"[AUDIO] Путь к файлу: {filePath}");
-        System.Diagnostics.Debug.WriteLine($"[AUDIO] Файл существует: {File.Exists(filePath)}");
 
-        // ИСПРАВЛЕНИЕ: Используем File.OpenRead для создания Stream
-        var fileStream = File.OpenRead(filePath);
+        // Защита от падения: если файл был удалён из кэша (например, ОС очистила кэш),
+        // воспроизводим из резервной копии или показываем понятную ошибку вместо краша.
+        if (!File.Exists(filePath))
+        {
+            var backupPath = GetBackupPath(filePath);
+            if (File.Exists(backupPath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+                File.Copy(backupPath, filePath, overwrite: true);
+            }
+            else
+            {
+                throw new FileNotFoundException($"Файл трека не найден: {Path.GetFileName(filePath)}. Добавьте трек заново.");
+            }
+        }
+
+        FileStream fileStream;
+        try
+        {
+            fileStream = File.OpenRead(filePath);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Не удалось открыть файл «{Path.GetFileName(filePath)}»: {ex.Message}", ex);
+        }
+
         _player = _audioManager.CreatePlayer(fileStream);
         
         _currentVolume = volume;
@@ -96,5 +118,11 @@ public sealed class MauiAudioOutput : IAudioOutput
     private void OnPlaybackEnded(object? sender, EventArgs e)
     {
         PlaybackCompleted?.Invoke(this, EventArgs.Empty);
+    }
+
+    public static string GetBackupPath(string cacheFilePath)
+    {
+        var backupDir = Path.Combine(FileSystem.AppDataDirectory, "TrackBackup");
+        return Path.Combine(backupDir, Path.GetFileName(cacheFilePath));
     }
 }

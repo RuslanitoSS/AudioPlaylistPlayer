@@ -10,10 +10,4 @@
                   ContentTemplate="{DataTemplate local:HomePage}"
                   Route="HomePage" />
 
-    <!-- Остальные страницы регистрируем для навигации, но не показываем во вкладках -->
-    <ShellContent Route="AllTracksPage" ContentTemplate="{DataTemplate local:AllTracksPage}" Shell.FlyoutBehavior="Disabled" />
-    <ShellContent Route="PlaylistsPage" ContentTemplate="{DataTemplate local:PlaylistsPage}" Shell.FlyoutBehavior="Disabled" />
-    <ShellContent Route="PlaylistDetailPage" ContentTemplate="{DataTemplate local:PlaylistDetailPage}" Shell.FlyoutBehavior="Disabled" />
-    <ShellContent Route="QueuePage" ContentTemplate="{DataTemplate local:QueuePage}" Shell.FlyoutBehavior="Disabled" />
-
 </Shell>
